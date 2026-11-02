@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-ink-50 text-ink-800 antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04';
+  }
+  html[dir='rtl'] body {
+    letter-spacing: 0;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-blood-400 ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-200/70 bg-white shadow-card;
+  }
+  .card-pad {
+    @apply card p-5 sm:p-6;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply btn bg-blood-600 text-white hover:bg-blood-700 active:bg-blood-800;
+  }
+  .btn-secondary {
+    @apply btn border border-ink-200 bg-white text-ink-700 hover:border-ink-300 hover:bg-ink-50;
+  }
+  .btn-ghost {
+    @apply btn text-ink-600 hover:bg-ink-100 hover:text-ink-800;
+  }
+  .btn-danger {
+    @apply btn bg-ink-800 text-white hover:bg-ink-900;
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-800
+      placeholder:text-ink-400 focus:border-blood-400 focus:ring-2 focus:ring-blood-100;
+  }
+  .label {
+    @apply mb-1.5 block text-xs font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold;
+  }
+  .table-base {
+    @apply w-full border-collapse text-sm;
+  }
+  .table-base th {
+    @apply border-b border-ink-200 pb-2 text-start text-xs font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .table-base td {
+    @apply border-b border-ink-100 py-3 align-middle text-ink-700;
+  }
+  .link {
+    @apply font-semibold text-blood-700 underline-offset-4 hover:underline;
+  }
+  .skeleton {
+    @apply animate-pulse rounded-lg bg-ink-100;
+  }
+}
+
+/* Fond decoratif discret de la page d'accueil (aucune image externe). */
+.hero-glow {
+  background:
+    radial-gradient(60rem 32rem at 78% -10%, rgba(224, 49, 49, 0.16), transparent 62%),
+    radial-gradient(40rem 24rem at 8% 10%, rgba(122, 12, 12, 0.1), transparent 60%);
+}
+.grid-lines {
+  background-image: linear-gradient(rgba(18, 24, 33, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 24, 33, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(60% 60% at 50% 40%, black, transparent);
+}

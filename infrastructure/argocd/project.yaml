@@ -1,0 +1,16 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: sos-sang
+  namespace: argocd
+spec:
+  description: SOS Sang - plateforme de don de sang
+  sourceRepos: ['https://github.com/CHANGEME/sos-sang.git']
+  destinations:
+    - { namespace: sos-app, server: https://kubernetes.default.svc }
+    - { namespace: sos-data, server: https://kubernetes.default.svc }
+    - { namespace: monitoring, server: https://kubernetes.default.svc }
+  clusterResourceWhitelist:
+    - { group: '', kind: Namespace }
+  namespaceResourceBlacklist:
+    - { group: '', kind: ResourceQuota }

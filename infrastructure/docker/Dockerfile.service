@@ -1,0 +1,49 @@
+# Image multi-stage commune aux microservices Node/TypeScript.
+# Le service cible est choisi par l'argument SERVICE (auth, donor, hospital, ...).
+#
+# Note d'ingenierie : les sources TypeScript sont executees via tsx (registre CJS)
+# pour garder une image unique et un demarrage identique a `npm run dev`.
+# Le meme code est compile par `npm run build` pour la verification de types en CI.
+FROM node:20-alpine AS deps
+WORKDIR /app
+RUN apk add --no-cache python3 make g++
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY packages/shared/package.json packages/shared/
+COPY gateway/package.json gateway/
+COPY services/auth-service/package.json services/auth-service/
+COPY services/donor-service/package.json services/donor-service/
+COPY services/hospital-service/package.json services/hospital-service/
+COPY services/matching-service/package.json services/matching-service/
+COPY services/notification-service/package.json services/notification-service/
+COPY services/stock-service/package.json services/stock-service/
+COPY services/dashboard-service/package.json services/dashboard-service/
+RUN npm install --ignore-scripts
+
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json tsconfig.base.json ./
+COPY packages packages
+COPY services services
+COPY gateway gateway
+COPY scripts scripts
+RUN npm run build:shared
+
+FROM node:20-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+RUN addgroup -S sos && adduser -S sos -G sos && apk add --no-cache wget
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/services ./services
+COPY --from=build /app/gateway ./gateway
+# scripts/ contient create-admin et seed (utiles dans les conteneurs auth et gateway)
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/package.json ./package.json
+USER sos
+ARG SERVICE=auth
+ENV SERVICE_NAME=${SERVICE}
+# Chaque service expose /health sur son port (voir HEALTH_PORT dans compose).
+HEALTHCHECK --interval=15s --timeout=4s --start-period=30s --retries=5 \
+  CMD wget -qO- "http://127.0.0.1:${HEALTH_PORT:-4001}/health" >/dev/null || exit 1
+CMD ["sh", "-c", "if [ \"$SERVICE_NAME\" = \"gateway\" ]; then node -r tsx/cjs -e \"require('./gateway/src/index.ts').start()\"; else node -r tsx/cjs -e \"require('./services/' + process.env.SERVICE_NAME + '/src/index.ts').start()\"; fi"]

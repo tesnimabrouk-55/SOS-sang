@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sos-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sos.labels" . | nindent 4 }}
+data:
+  CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
+  PUBLIC_BASE_URL: {{ .Values.config.publicBaseUrl | quote }}
+  ELIGIBILITY_MIN_INTERVAL_DAYS: {{ .Values.config.eligibility.minIntervalDays | quote }}
+  ELIGIBILITY_MIN_AGE: {{ .Values.config.eligibility.minAge | quote }}
+  ELIGIBILITY_MAX_AGE: {{ .Values.config.eligibility.maxAge | quote }}
+  ELIGIBILITY_MIN_WEIGHT_KG: {{ .Values.config.eligibility.minWeightKg | quote }}
+  MATCHING_RADII_KM: {{ .Values.config.matching.radiiKm | quote }}
+  MATCHING_MAX_ALERTS: {{ .Values.config.matching.maxAlerts | quote }}
+  NOTIFICATION_EMAIL_MODE: {{ .Values.config.notification.emailMode | quote }}
+  NOTIFICATION_SMS_MODE: {{ .Values.config.notification.smsMode | quote }}
+  AUTH_SERVICE_URL: "http://auth-service:4001"
+  DONOR_SERVICE_URL: "http://donor-service:4002"
+  HOSPITAL_SERVICE_URL: "http://hospital-service:4003"
+  MATCHING_SERVICE_URL: "http://matching-service:4004"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:4005"
+  STOCK_SERVICE_URL: "http://stock-service:4006"
+  DASHBOARD_SERVICE_URL: "http://dashboard-service:4007"
+  REDIS_URL: "redis://redis.sos-data.svc.cluster.local:6379"

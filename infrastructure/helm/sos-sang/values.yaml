@@ -1,0 +1,111 @@
+# Profil par defaut : "target" (2 replicas pour les services critiques).
+# Profil leger pour un PC : --set profile=local
+profile: target
+
+image:
+  registry: ghcr.io/CHANGEME
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+# Secrets : jamais de valeur reelle dans Git.
+#   helm upgrade --install sos-sang . -n sos-app --create-namespace \
+#     --set secrets.jwtSecret="$(openssl rand -hex 48)" \
+#     --set secrets.internalApiToken="$(openssl rand -hex 32)" \
+#     --set secrets.databaseUrl="postgresql://..." --set secrets.amqpUrl="amqp://..."
+secrets:
+  create: true
+  jwtSecret: ""
+  internalApiToken: ""
+  databaseUrl: ""
+  amqpUrl: ""
+  postgresPassword: ""
+  rabbitmqPassword: ""
+  # Pour un secret deja gere (Sealed Secrets, External Secrets) : create=false et
+  # existingSecret=nom-du-secret.
+  existingSecret: ""
+
+config:
+  corsOrigins: "https://sos-sang.example.tn"
+  publicBaseUrl: "https://sos-sang.example.tn"
+  eligibility:
+    minIntervalDays: 90
+    minAge: 18
+    maxAge: 65
+    minWeightKg: 50
+  matching:
+    radiiKm: "25,50,100,200"
+    maxAlerts: 50
+  notification:
+    emailMode: simulated
+    smsMode: simulated
+
+services:
+  - name: auth
+    port: 4001
+    schema: auth
+    critical: true
+  - name: donor
+    port: 4002
+    schema: donor
+    critical: true
+  - name: hospital
+    port: 4003
+    schema: hospital
+    critical: true
+  - name: matching
+    port: 4004
+    schema: matching
+    critical: true
+  - name: notification
+    port: 4005
+    schema: notification
+    critical: true
+  - name: stock
+    port: 4006
+    schema: stock
+    critical: false
+  - name: dashboard
+    port: 4007
+    schema: dashboard
+    critical: false
+
+gateway:
+  replicas: 2
+  port: 8080
+
+frontend:
+  replicas: 2
+  port: 80
+
+data:
+  postgres:
+    image: postgres:16-alpine
+    storage: 5Gi
+  redis:
+    image: redis:7-alpine
+    storage: 2Gi
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    storage: 2Gi
+
+resources:
+  backend:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  targetCpuUtilization: 70
+
+ingress:
+  enabled: true
+  className: nginx
+  host: sos-sang.example.tn
+  tlsSecret: sos-sang-tls
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+
+networkPolicies:
+  enabled: true

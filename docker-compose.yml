@@ -1,0 +1,381 @@
+# SOS Sang — pile completement conteneurisee (PostgreSQL, Redis, RabbitMQ, 7 services, gateway, frontend).
+#
+#   1. cp .env.example .env
+#   2. renseigner JWT_SECRET (openssl rand -hex 48) et INTERNAL_API_TOKEN (openssl rand -hex 32)
+#   3. docker compose up --build
+#   4. creer l'administrateur : docker compose exec auth-service npm run create-admin -- admin@sos-sang.local
+#   5. charger la demonstration : docker compose exec gateway npx tsx scripts/seed.ts
+#
+# Une seule instance PostgreSQL heberge un schema par service (separation logique
+# demandee par le cahier des charges). Aucun service ne lit le schema d'un autre :
+# les echanges passent par HTTP interne ou par evenements RabbitMQ.
+# En production, chaque service doit disposer de sa propre instance (voir docs/ARCHITECTURE.md).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sos_local_password}
+      POSTGRES_DB: sos_sang
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports: ['5432:5432']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U sos -d sos_sang']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [sos]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redisdata:/data
+    ports: ['6379:6379']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [sos]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: sos
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-sos_local_password}
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    ports: ['5672:5672', '15672:15672']
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks: [sos]
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: auth-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      AUTH_DB_SCHEMA: auth
+      HEALTH_PORT: 4001
+      AUTH_PORT: 4001
+    ports: ['4001:4001']
+    networks: [sos]
+
+  donor-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: donor-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      DONOR_DB_SCHEMA: donor
+      HEALTH_PORT: 4002
+      DONOR_PORT: 4002
+    ports: ['4002:4002']
+    networks: [sos]
+
+  hospital-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: hospital-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      HOSPITAL_DB_SCHEMA: hospital
+      HEALTH_PORT: 4003
+      HOSPITAL_PORT: 4003
+    ports: ['4003:4003']
+    networks: [sos]
+
+  matching-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: matching-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      MATCHING_DB_SCHEMA: matching
+      HEALTH_PORT: 4004
+      MATCHING_PORT: 4004
+    ports: ['4004:4004']
+    networks: [sos]
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: notification-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      NOTIFICATION_DB_SCHEMA: notification
+      HEALTH_PORT: 4005
+      NOTIFICATION_PORT: 4005
+    ports: ['4005:4005']
+    networks: [sos]
+
+  stock-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: stock-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      STOCK_DB_SCHEMA: stock
+      HEALTH_PORT: 4006
+      STOCK_PORT: 4006
+    ports: ['4006:4006']
+    networks: [sos]
+
+  dashboard-service:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: dashboard-service }
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      rabbitmq: { condition: service_healthy }
+    environment:
+      DATABASE_URL: postgresql://sos:${POSTGRES_PASSWORD:-sos_local_password}@postgres:5432/sos_sang
+      REDIS_URL: redis://redis:6379
+      AMQP_URL: amqp://sos:${RABBITMQ_PASSWORD:-sos_local_password}@rabbitmq:5672
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+      ELIGIBILITY_MIN_INTERVAL_DAYS: ${ELIGIBILITY_MIN_INTERVAL_DAYS:-90}
+      ELIGIBILITY_MIN_AGE: ${ELIGIBILITY_MIN_AGE:-18}
+      ELIGIBILITY_MAX_AGE: ${ELIGIBILITY_MAX_AGE:-65}
+      ELIGIBILITY_MIN_WEIGHT_KG: ${ELIGIBILITY_MIN_WEIGHT_KG:-50}
+      MATCHING_RADII_KM: ${MATCHING_RADII_KM:-25,50,100,200}
+      MATCHING_MAX_ALERTS: ${MATCHING_MAX_ALERTS:-50}
+      NOTIFICATION_EMAIL_MODE: ${NOTIFICATION_EMAIL_MODE:-simulated}
+      NOTIFICATION_SMS_MODE: ${NOTIFICATION_SMS_MODE:-simulated}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      DASHBOARD_DB_SCHEMA: dashboard
+      HEALTH_PORT: 4007
+      DASHBOARD_PORT: 4007
+    ports: ['4007:4007']
+    networks: [sos]
+
+  gateway:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.service
+      args: { SERVICE: gateway }
+    restart: unless-stopped
+    depends_on:
+      auth-service: { condition: service_started }
+      donor-service: { condition: service_started }
+      hospital-service: { condition: service_started }
+      matching-service: { condition: service_started }
+      notification-service: { condition: service_started }
+      stock-service: { condition: service_started }
+      dashboard-service: { condition: service_started }
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?Definir JWT_SECRET dans .env}
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:?Definir INTERNAL_API_TOKEN dans .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:8080}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      HOSPITAL_SERVICE_URL: http://hospital-service:4003
+      MATCHING_SERVICE_URL: http://matching-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      STOCK_SERVICE_URL: http://stock-service:4006
+      DASHBOARD_SERVICE_URL: http://dashboard-service:4007
+      HEALTH_PORT: 8080
+      API_GATEWAY_PORT: 8080
+    ports: ['8080:8080']
+    networks: [sos]
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile.frontend
+    restart: unless-stopped
+    depends_on: [gateway]
+    ports: ['3000:80']
+    networks: [sos]
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitdata:
+
+networks:
+  sos:
+    driver: bridge

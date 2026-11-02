@@ -1,0 +1,155 @@
+{{- $ns := "sos-data" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $ns }}
+  labels: { app.kubernetes.io/part-of: sos-sang }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: {{ $ns }}
+spec:
+  clusterIP: None
+  selector: { app: postgres }
+  ports: [{ name: postgres, port: 5432, targetPort: 5432 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: {{ $ns }}
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: {{ .Values.data.postgres.image }}
+          ports: [{ containerPort: 5432, name: postgres }]
+          env:
+            - { name: POSTGRES_USER, value: sos }
+            - { name: POSTGRES_DB, value: sos_sang }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: {{ include "sos.secretName" . }}, key: POSTGRES_PASSWORD }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "sos", "-d", "sos_sang"] }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: { port: 5432 }
+            initialDelaySeconds: 45
+            periodSeconds: 20
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: {{ .Values.data.postgres.storage }} } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: {{ $ns }}
+spec:
+  clusterIP: None
+  selector: { app: redis }
+  ports: [{ name: redis, port: 6379, targetPort: 6379 }]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: {{ $ns }}
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: {{ .Values.data.redis.image }}
+          args: ["redis-server", "--appendonly", "yes"]
+          ports: [{ containerPort: 6379, name: redis }]
+          resources:
+            requests: { cpu: 50m, memory: 96Mi }
+            limits: { cpu: 300m, memory: 256Mi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: {{ .Values.data.redis.storage }} } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: {{ $ns }}
+spec:
+  clusterIP: None
+  selector: { app: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: 5672 }
+    - { name: management, port: 15672, targetPort: 15672 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: {{ $ns }}
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels: { app: rabbitmq }
+  template:
+    metadata:
+      labels: { app: rabbitmq }
+    spec:
+      containers:
+        - name: rabbitmq
+          image: {{ .Values.data.rabbitmq.image }}
+          ports:
+            - { containerPort: 5672, name: amqp }
+            - { containerPort: 15672, name: management }
+          env:
+            - { name: RABBITMQ_DEFAULT_USER, value: sos }
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef: { name: {{ include "sos.secretName" . }}, key: RABBITMQ_PASSWORD }
+          resources:
+            requests: { cpu: 150m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 768Mi }
+          readinessProbe:
+            exec: { command: ["rabbitmq-diagnostics", "-q", "ping"] }
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/rabbitmq }
+  volumeClaimTemplates:
+    - metadata: { name: data }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: {{ .Values.data.rabbitmq.storage }} } }

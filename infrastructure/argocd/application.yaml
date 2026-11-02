@@ -1,0 +1,32 @@
+# GitOps : Argo CD synchronise le chart Helm depuis le depot Git.
+#   kubectl apply -f infrastructure/argocd/application.yaml
+# Les secrets NE sont pas dans Git : creer sos-secrets avant la synchronisation
+# (Sealed Secrets / External Secrets), puis mettre secrets.create=false.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sos-sang
+  namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/CHANGEME/sos-sang.git
+    targetRevision: main
+    path: infrastructure/helm/sos-sang
+    helm:
+      releaseName: sos-sang
+      valueFiles: [values.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: sos-app
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 5
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }

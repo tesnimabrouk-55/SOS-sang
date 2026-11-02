@@ -1,0 +1,17 @@
+{
+  "name": "@sos/donor-service",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts"
+  },
+  "dependencies": {
+    "@sos/shared": "*",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "zod": "^3.24.1"
+  }
+}

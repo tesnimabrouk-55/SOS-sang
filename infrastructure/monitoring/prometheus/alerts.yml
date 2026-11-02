@@ -1,0 +1,52 @@
+groups:
+  - name: sos-sang-slo
+    rules:
+      - alert: ApiLatenceP95Elevee
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, service)) > 0.5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 > 500 ms sur {{ $labels.service }}"
+          description: "Objectif du cahier des charges : p95 < 500 ms. Valeur actuelle {{ $value }} s."
+
+      - alert: TauxErreurEleve
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (service) / sum(rate(http_requests_total[5m])) by (service) > 0.02
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Plus de 2% d erreurs 5xx sur {{ $labels.service }}"
+
+      - alert: FileRabbitMQQuiGrossit
+        expr: rabbitmq_queue_messages{queue!~".*dlq.*"} > 500
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "File {{ $labels.queue }} : {{ $value }} messages non consommes"
+
+      - alert: DeadLetterQueueNonVide
+        expr: rabbitmq_queue_messages{queue=~".*dlq.*"} > 0
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Messages en file morte : intervention requise"
+
+      - alert: DelaiNotificationEleve
+        expr: histogram_quantile(0.95, sum(rate(notification_delivery_seconds_bucket[5m])) by (le)) > 10
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "p95 du delai de notification > 10 s"
+
+      - alert: PodRedemarre
+        expr: increase(kube_pod_container_status_restarts_total{namespace="sos-app"}[15m]) > 2
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Pod {{ $labels.pod }} redemarre plus de 2 fois en 15 min"
+
+      - alert: PodIndisponible
+        expr: kube_deployment_status_replicas_available{namespace="sos-app"} < 1
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "Aucun replica disponible pour {{ $labels.deployment }}"

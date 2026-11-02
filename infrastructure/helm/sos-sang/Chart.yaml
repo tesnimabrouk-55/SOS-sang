@@ -1,0 +1,9 @@
+apiVersion: v2
+name: sos-sang
+description: SOS Sang - mise en relation des hopitaux et des donneurs de sang compatibles
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords: [blood, donation, microservices, emergency]
+maintainers:
+  - name: Projet academique SOS Sang

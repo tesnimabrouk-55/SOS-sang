@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Installation, lint, tests, couverture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Compilation du paquet partage
+        run: npm run build:shared
+      - name: Verification des types (lint)
+        run: npm run lint
+      - name: Tests unitaires et d integration (pile embarquee)
+        run: npm run test
+      - name: Tests de bout en bout contre la pile demarree
+        run: |
+          npx tsx scripts/embedded.ts &
+          npx wait-on http://localhost:8080/api/health --timeout 120000
+          npm run seed
+          SOS_E2E=1 npm test
+        env:
+          JWT_SECRET: ci-only-secret-not-used-in-production-0123456789
+      - name: Couverture du code critique
+        run: npx vitest run --coverage
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+
+  images:
+    name: Images Docker + scan Trivy
+    runs-on: ubuntu-latest
+    needs: quality
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    strategy:
+      matrix:
+        include:
+          - { name: auth-service, port: 4001 }
+          - { name: donor-service, port: 4002 }
+          - { name: hospital-service, port: 4003 }
+          - { name: matching-service, port: 4004 }
+          - { name: notification-service, port: 4005 }
+          - { name: stock-service, port: 4006 }
+          - { name: dashboard-service, port: 4007 }
+          - { name: gateway, port: 8080 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Construction de l image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.service
+          build-args: SERVICE=${{ matrix.name }}
+          load: true
+          tags: sos-sang/${{ matrix.name }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan Trivy (echec si vulnerabilite CRITICAL)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: sos-sang/${{ matrix.name }}:${{ github.sha }}
+          format: sarif
+          output: trivy-${{ matrix.name }}.sarif
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.name }}.sarif
+      - name: Publication dans GHCR (apres configuration des secrets)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.service
+          build-args: SERVICE=${{ matrix.name }}
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/sos-sang-${{ matrix.name }}:latest
+            ghcr.io/${{ github.repository_owner }}/sos-sang-${{ matrix.name }}:${{ github.sha }}
+
+  frontend-image:
+    name: Image frontend + scan Trivy
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile.frontend
+          load: true
+          tags: sos-sang/frontend:${{ github.sha }}
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: sos-sang/frontend:${{ github.sha }}
+          format: table
+          severity: CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true

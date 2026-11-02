@@ -1,0 +1,19 @@
+SOS Sang est installe dans le namespace {{ .Release.Namespace }}.
+
+Verifier les pods :
+  kubectl -n {{ .Release.Namespace }} get pods
+  kubectl -n sos-data get pods
+
+Tester l'API :
+  kubectl -n {{ .Release.Namespace }} port-forward svc/gateway 8080:8080
+  curl http://localhost:8080/api/health
+
+Creer le premier administrateur (aucun identifiant n'est code en dur) :
+  kubectl -n {{ .Release.Namespace }} port-forward svc/auth-service 4001:4001
+  curl -X POST http://localhost:4001/api/internal/admin/bootstrap \
+    -H "x-internal-token: $INTERNAL_API_TOKEN" \
+    -H "content-type: application/json" \
+    -d '{"email":"vous@exemple.tn"}'
+
+Limites : sur Minikube/Kind mono-noeud, 2 replicas ne protegent pas d'une panne
+materielle. Voir docs/ARCHITECTURE.md.
