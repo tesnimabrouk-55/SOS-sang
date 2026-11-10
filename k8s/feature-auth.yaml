@@ -1,0 +1,133 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata: { name: postgres, namespace: sos-app }
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:16-alpine
+        ports: [{ containerPort: 5432 }]
+        env:
+        - { name: POSTGRES_USER, value: sos }
+        - { name: POSTGRES_DB, value: sos_sang }
+        - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+        - name: POSTGRES_PASSWORD
+          valueFrom: { secretKeyRef: { name: sos-secret, key: POSTGRES_PASSWORD } }
+        volumeMounts: [{ name: data, mountPath: /var/lib/postgresql/data }]
+  volumeClaimTemplates:
+  - metadata: { name: data }
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources: { requests: { storage: 1Gi } }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: postgres, namespace: sos-app }
+spec:
+  selector: { app: postgres }
+  ports: [{ port: 5432 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: auth-service, namespace: sos-app }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: auth-service } }
+  template:
+    metadata: { labels: { app: auth-service } }
+    spec:
+      containers:
+      - name: auth-service
+        image: ghcr.io/tesnimabrouk-55/sos-auth:latest
+        imagePullPolivy: Always
+        ports: [{ containerPort: 4001 }]
+        env:
+        - name: POSTGRES_PASSWORD
+          valueFrom: { secretKeyRef: { name: sos-secret, key: POSTGRES_PASSWORD } }
+        - name: JWT_SECRET
+          valueFrom: { secretKeyRef: { name: sos-secret, key: JWT_SECRET } }
+        - name: INTERNAL_API_TOKEN
+          valueFrom: { secretKeyRef: { name: sos-secret, key: INTERNAL_API_TOKEN } }
+        - { name: DATABASE_URL, value: "postgresql://sos:$(POSTGRES_PASSWORD)@postgres:5432/sos_sang" }
+        - { name: REDIS_URL, value: "redis://redis:6379" }
+        - { name: AMQP_URL, value: "amqp://sos:sos_local_password@rabbitmq:5672" }
+        - { name: AUTH_DB_SCHEMA, value: auth }
+        - { name: DONOR_SERVICE-URL, value: "http://donor-service:4002" }
+        - { name: DONOR_SERVICE_URL, value: "http://donor-service:4002" }
+        - { name: HOSPITAL_SERVICE_URL, value: "http://hospital-service:4003" }
+        - { name: AUTH_PORT, value: "4001" }
+        - { name: HEALTH_PORT, value: "4001" }
+        - { name: CORS_ORIGINS, value: "http://localhost:3000,http://localhost:8080" }
+        - { name: PUBLIC_BASE_URL, value: "http://localhost:3000" }
+        readinessProbe: { httpGet: { path: /health, port: 4001 }, initialDelaySeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: auth-service, namespace: sos-app }
+spec:
+  selector: { app: auth-service }
+  ports: [{ port: 4001 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: gateway, namespace: sos-app }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: gateway } }
+  template:
+    metadata: { labels: { app: gateway } }
+    spec:
+      containers:
+      - name: gateway
+        image: ghcr.io/tesnimabrouk-55/sos-gateway:latest
+        imagePullPolivy: Always
+        ports: [{ containerPort: 8080 }]
+        env:
+        - name: JWT_SECRET
+          valueFrom: { secretKeyRef: { name: sos-secret, key: JWT_SECRET } }
+        - name: INTERNAL_API_TOKEN
+          valueFrom: { secretKeyRef: { name: sos-secret, key: INTERNAL_API_TOKEN } }
+        - { name: API_GATEWAY_PORT, value: "8080" }
+        - { name: HEALTH_PORT, value: "8080" }
+        - { name: CORS_ORIGINS, value: "http://localhost:3000,http://localhost:8080" }
+        - { name: AUTH_URL, value: "http://auth-service:4001" }
+        - { name: DONOR_URL, value: "http://donor-service:4002" }
+        - { name: HOSPITAL_URL, value: "http://hospital-service:4003" }
+        - { name: MATCHING_URL, value: "http://matching-service:4004" }
+        - { name: NOTIFICATION_URL, value: "http://notification-service:4005" }
+        - { name: STOCK_URL, value: "http://stock-service:4006" }
+        - { name: DASHBOARD_URL, value: "http://dashboard-service:4007" }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: gateway, namespace: sos-app }
+spec:
+  selector: { app: gateway }
+  ports: [{ port: 8080 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend, namespace: sos-app }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+      - name: frontend
+        image: ghcr.io/tesnimabrouk-55/sos-frontend:latest
+        imagePullPolivy: Always
+        ports: [{ containerPort: 80 }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend, namespace: sos-app }
+spec:
+  selector: { app: frontend }
+  ports: [{ port: 80 }]
