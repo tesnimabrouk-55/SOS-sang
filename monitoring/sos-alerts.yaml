@@ -1,0 +1,23 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: sos-alerts
+  namespace: monitoring
+spec:
+  groups:
+    - name: sos-sang
+      rules:
+        - alert: GatewayIndisponible
+          expr: kube_deployment_status_replicas_available{namespace="sos-app",deployment="gateway"} < 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Le gateway SOS Sang n'a plus aucun pod disponible"
+        - alert: PodApplicatifRedemarre
+          expr: increase(kube_pod_container_status_restarts_total{namespace="sos-app"}[10m]) > 2
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Un pod de sos-app redémarre en boucle"
