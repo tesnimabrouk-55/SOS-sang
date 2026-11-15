@@ -44,7 +44,7 @@ spec:
       containers:
       - name: auth-service
         image: ghcr.io/tesnimabrouk-55/sos-auth:latest
-        imagePullPolivy: Always
+        imagePullPolicy: Always
         ports: [{ containerPort: 4001 }]
         env:
         - name: POSTGRES_PASSWORD
@@ -85,7 +85,7 @@ spec:
       containers:
       - name: gateway
         image: ghcr.io/tesnimabrouk-55/sos-gateway:latest
-        imagePullPolivy: Always
+        imagePullPolicy: Always
         ports: [{ containerPort: 8080 }]
         env:
         - name: JWT_SECRET
@@ -122,7 +122,7 @@ spec:
       containers:
       - name: frontend
         image: ghcr.io/tesnimabrouk-55/sos-frontend:latest
-        imagePullPolivy: Always
+        imagePullPolicy: Always
         ports: [{ containerPort: 80 }]
 ---
 apiVersion: v1

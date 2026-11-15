@@ -10,7 +10,7 @@ spec:
       containers:
       - name: hospital-service
         image: ghcr.io/tesnimabrouk-55/sos-hospital:latest
-        imagePullPolivy: Always
+        imagePullPolicy: Always
         ports: [{ containerPort: 4003 }]
         env:
         - name: POSTGRES_PASSWORD

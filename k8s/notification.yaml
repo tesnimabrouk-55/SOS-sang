@@ -10,7 +10,7 @@ spec:
       containers:
       - name: notification-service
         image: ghcr.io/tesnimabrouk-55/sos-notification:latest
-        imagePullPolivy: Always
+        imagePullPolicy: Always
         ports: [{ containerPort: 4005 }]
         env:
         - name: POSTGRES_PASSWORD

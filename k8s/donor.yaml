@@ -10,7 +10,7 @@ spec:
       containers:
       - name: donor-service
         image: ghcr.io/tesnimabrouk-55/sos-donor:latest
-        imagePullPolivy: Always
+        imagePullPolicy: Always
         ports: [{ containerPort: 4002 }]
         env:
         - name: POSTGRES_PASSWORD
