@@ -68,7 +68,7 @@ const DICT: Record<string, Entry> = {
   'resp.DECLINED': { fr: 'Indisponible', ar: 'غير متاح' },
   'resp.CANCELLED': { fr: 'Annulé', ar: 'ملغى' },
   'home.eyebrow': { fr: 'Plateforme solidaire de don de sang', ar: 'منصة تضامنية للتبرع بالدم' },
-  'home.title': { fr: 'Un besoin urgent. Des donneurs proches. En quelques minutes.', ar: 'حاجة عاجلة. متبرعون قريبون. في دقائق.' },
+  'home.title': { fr: 'Un besoin urgent. Des donneurs proches. En quelques minutes. (Jenkins)', ar: 'حاجة عاجلة. متبرعون قريبون. في دقائق.' },
   'home.subtitle': {
     fr: 'SOS Sang relie les hôpitaux qui manquent de sang aux donneurs compatibles, disponibles et proches — sans exposer votre position précise.',
     ar: 'تربط SOS دم المستشفيات التي تحتاج إلى الدم بالمتبرعين المتوافقين والمتاحين والقريبين، دون الكشف عن موقعك الدقيق.',
